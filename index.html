@@ -15,7 +15,7 @@ body.dark .note-item { background:#222; border-color:#444; }
 textarea, select, button { width:100%; margin-top:6px; padding:6px; font-size:14px; box-sizing:border-box; }
 button { cursor:pointer; }
 
-/* Finder Window Styles */
+/* modern finder */
 .finder-window { margin-top:20px; border:2px solid #999; border-radius:8px; overflow:hidden; background:#f5f5f5; }
 body.dark .finder-window { background:#1a1a1a; border-color:#555; }
 .finder-titlebar { background:linear-gradient(180deg, #e8e8e8 0%, #d0d0d0 100%); padding:8px 10px; border-bottom:1px solid #999; font-size:12px; font-weight:bold; display:flex; align-items:center; justify-content:space-between; }
@@ -36,9 +36,20 @@ body.dark .folder-item:hover { background:rgba(255,255,255,0.05); }
 .folder-actions button { margin-top:0; }
 .finder-input { width:calc(100% - 12px); padding:6px; margin-top:6px; font-size:13px; }
 
-/* legacy simplified folder list */
+/* legacy folder list */
 .legacy-folder-list div { cursor:pointer; margin-bottom:4px; padding:4px; border:1px solid #ccc; border-radius:2px; background:#fff; }
 body.dark .legacy-folder-list div { background:#222; border-color:#444; }
+
+/* legacy mode small inline buttons */
+.legacy-btn {
+    display:inline-block;
+    padding:2px 4px;
+    font-size:10px;
+    margin-right:2px;
+    margin-bottom:2px;
+    width:auto;
+    border-radius:0;
+}
 </style>
 </head>
 <body>
@@ -47,7 +58,7 @@ body.dark .legacy-folder-list div { background:#222; border-color:#444; }
         <h2>@yrizzme notes</h2>
         <div id="statusBadge" class="badge"></div>
         <button onclick="toggleDark()">toggle dark</button>
-        <button onclick="toggleLegacy()">toggle legacy</button>
+        <button onclick="toggleMode()">toggle modern</button>
     </div>
 
     <select id="folderSelect" onchange="displayNotes()">
@@ -60,8 +71,21 @@ body.dark .legacy-folder-list div { background:#222; border-color:#444; }
 
     <div id="notesList"></div>
 
-    <!-- Finder / legacy folder -->
-    <div class="finder-window">
+    <!-- legacy folder buttons -->
+    <div style="margin-top:10px;">
+        <button class="legacy-btn" onclick="showNewFolderInput()">new folder</button>
+        <button class="legacy-btn" onclick="showRenameFolderInput()">rename folder</button>
+        <button class="legacy-btn" onclick="deleteFolder()">delete folder</button>
+        <input type="text" id="newFolderInput" placeholder="folder name..." style="display:none; width:100%; margin-top:6px;">
+        <button id="createFolderBtn" onclick="createFolder()" style="display:none;">create</button>
+        <input type="text" id="renameFolderInput" placeholder="new name..." style="display:none; width:100%; margin-top:6px;">
+        <button id="renameFolderBtn" onclick="renameFolder()" style="display:none;">rename</button>
+    </div>
+
+    <div class="legacy-folder-list" id="legacyFolderList"></div>
+
+    <!-- modern finder window -->
+    <div class="finder-window" id="finderWindow">
         <div class="finder-titlebar">
             <div class="finder-dots">
                 <div class="finder-dot dot-close"></div>
@@ -73,7 +97,6 @@ body.dark .legacy-folder-list div { background:#222; border-color:#444; }
         </div>
         <div class="finder-content">
             <div class="folder-grid" id="folderGrid"></div>
-            <div class="legacy-folder-list" id="legacyFolderList" style="display:none;"></div>
             <div class="folder-actions">
                 <button onclick="showNewFolderInput()">new folder</button>
                 <button onclick="showRenameFolderInput()">rename folder</button>
@@ -88,11 +111,8 @@ body.dark .legacy-folder-list div { background:#222; border-color:#444; }
 </div>
 
 <script>
-// ===== MODE DETECTION =====
-var ua = navigator.userAgent.toLowerCase();
-var AUTO_LEGACY = ua.indexOf('blackberry') !== -1; // 9780 detected
-var FORCE_LEGACY = localStorage.getItem('force_legacy') === '1';
-var LEGACY_MODE = AUTO_LEGACY || FORCE_LEGACY;
+// ===== DEFAULT LEGACY MODE =====
+var LEGACY_MODE = true;
 
 // ===== STORAGE =====
 var STORAGE_KEY = 'yrizzme_notes';
@@ -107,57 +127,40 @@ var saveTimer = null;
 function init(){
     document.getElementById('statusBadge').innerHTML = LEGACY_MODE ? 'legacy mode' : 'modern mode';
     if(localStorage.getItem('dark')==='1') document.body.className='dark';
-    loadNotes();
-    loadFolders();
-    updateFolderSelect();
-    displayNotes();
-    displayFolders();
+    loadNotes(); loadFolders(); updateFolderSelect();
+    displayNotes(); displayFolders();
 }
 init();
 
-// ===== DARK MODE =====
-function toggleDark(){
-    if(document.body.className.indexOf('dark')!==-1){document.body.className=''; localStorage.setItem('dark','0');}
-    else{document.body.className='dark'; localStorage.setItem('dark','1');}
+// ===== TOGGLE MODES =====
+function toggleMode(){
+    LEGACY_MODE = !LEGACY_MODE;
+    document.getElementById('statusBadge').innerHTML = LEGACY_MODE ? 'legacy mode' : 'modern mode';
+    displayFolders();
 }
 
-// ===== LEGACY TOGGLE =====
-function toggleLegacy(){
-    if(FORCE_LEGACY) localStorage.setItem('force_legacy','0'); 
-    else localStorage.setItem('force_legacy','1');
-    location.reload();
-}
+// ===== DARK MODE =====
+function toggleDark(){if(document.body.className.indexOf('dark')!==-1){document.body.className=''; localStorage.setItem('dark','0');} else{document.body.className='dark'; localStorage.setItem('dark','1');}}
 
 // ===== AUTOSAVE =====
-function autoSave(){clearTimeout(saveTimer); saveTimer=setTimeout(saveNotes,LEGACY_MODE?0:700);}
+function autoSave(){clearTimeout(saveTimer); saveTimer=setTimeout(saveNotes,0);}
 
 // ===== NOTES =====
 function saveNote(){
     var text=document.getElementById('noteText').value.trim();
     if(!text) return;
-    var folder=document.getElementById('folderSelect').value;
-    if(folder==='all') folder='default';
-    if(editingId){
-        for(var i=0;i<notes.length;i++){if(notes[i].id===editingId){notes[i].text=text;notes[i].folder=folder;notes[i].date=new Date().toLocaleString();}}
-        editingId=null;
-    } else { notes.unshift({id:Date.now(),text:text,folder:folder,date:new Date().toLocaleString()}); }
-    document.getElementById('noteText').value='';
-    saveNotes(); displayNotes();
+    var folder=document.getElementById('folderSelect').value; if(folder==='all') folder='default';
+    if(editingId){for(var i=0;i<notes.length;i++){if(notes[i].id===editingId){notes[i].text=text;notes[i].folder=folder;notes[i].date=new Date().toLocaleString();}} editingId=null;}
+    else {notes.unshift({id:Date.now(), text:text, folder:folder, date:new Date().toLocaleString()});}
+    document.getElementById('noteText').value=''; saveNotes(); displayNotes();
 }
-function editNote(id){for(var i=0;i<notes.length;i++){if(notes[i].id===id){document.getElementById('noteText').value=notes[i].text;document.getElementById('folderSelect').value=notes[i].folder;editingId=id;}}}
+function editNote(id){for(var i=0;i<notes.length;i++){if(notes[i].id===id){document.getElementById('noteText').value=notes[i].text; document.getElementById('folderSelect').value=notes[i].folder; editingId=id;}}}
 function deleteNote(id){if(!confirm('delete this note?'))return; var newNotes=[]; for(var i=0;i<notes.length;i++){if(notes[i].id!==id)newNotes.push(notes[i]);} notes=newNotes; saveNotes(); displayNotes();}
 
 // ===== DISPLAY =====
 function displayNotes(){
-    var list=document.getElementById('notesList');
-    var folder=document.getElementById('folderSelect').value;
-    selectedFolder = folder;
-    var html='';
-    for(var i=0;i<notes.length;i++){
-        var n=notes[i];
-        if(folder!=='all' && n.folder!==folder) continue;
-        html+='<div class="note-item"><div style="font-size:11px">'+n.date+' • '+n.folder+'</div><div>'+n.text.replace(/\n/g,'<br>')+'</div><button onclick="editNote('+n.id+')">edit</button><button onclick="deleteNote('+n.id+')">delete</button></div>';
-    }
+    var list=document.getElementById('notesList'); var folder=document.getElementById('folderSelect').value; selectedFolder=folder; var html='';
+    for(var i=0;i<notes.length;i++){var n=notes[i]; if(folder!=='all' && n.folder!==folder) continue; html+='<div class="note-item"><div style="font-size:11px">'+n.date+' • '+n.folder+'</div><div>'+n.text.replace(/\n/g,'<br>')+'</div><button onclick="editNote('+n.id+')">edit</button><button onclick="deleteNote('+n.id+')">delete</button></div>';}
     list.innerHTML = html||'<p>no notes</p>';
 }
 
@@ -168,84 +171,30 @@ function saveFolders(){localStorage.setItem(FOLDERS_KEY,JSON.stringify(folders))
 function loadFolders(){try{var l=JSON.parse(localStorage.getItem(FOLDERS_KEY)); if(l && l.length>0) folders=l;}catch(e){}}
 
 // ===== EXPORT =====
-function exportTxt(){
-    var out=''; 
-    for(var i=0;i<notes.length;i++){out+=notes[i].date+'\n'+notes[i].text+'\n\n';}
-    if(LEGACY_MODE){
-        var ta=document.getElementById('noteText'); ta.value=out; ta.select(); alert('notes placed in editor — select all and copy'); return;
-    }
-    var blob=new Blob([out],{type:'text/plain'}); 
-    var a=document.createElement('a'); 
-    a.href=URL.createObjectURL(blob); 
-    a.download='yrizzme-notes.txt'; 
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); 
-    URL.revokeObjectURL(a.href);
-}
+function exportTxt(){var out=''; for(var i=0;i<notes.length;i++){out+=notes[i].date+'\n'+notes[i].text+'\n\n';} var ta=document.getElementById('noteText'); ta.value=out; ta.select(); alert('notes placed in editor — select all and copy');}
 
 // ===== FOLDER MANAGEMENT =====
 function displayFolders(){
     if(LEGACY_MODE){
-        document.getElementById('folderGrid').style.display='none';
-        document.getElementById('legacyFolderList').style.display='block';
-        var html='';
-        for(var i=0;i<folders.length;i++){
-            var f=folders[i]; 
-            var count=0;
-            for(var j=0;j<notes.length;j++) if(notes[j].folder===f) count++;
-            var sel = selectedFolder===f ? '*' : '';
-            html+='<div onclick="openFolder(\''+f+'\')">'+sel+' '+f+' ('+count+')</div>';
-        }
-        document.getElementById('legacyFolderList').innerHTML = html;
+        document.getElementById('finderWindow').style.display='none';
+        var html=''; for(var i=0;i<folders.length;i++){var f=folders[i]; var count=0; for(var j=0;j<notes.length;j++) if(notes[j].folder===f) count++; var sel=selectedFolder===f?'*':''; html+='<div onclick="openFolder(\''+f+'\')">'+sel+' '+f+' ('+count+')</div>';}
+        document.getElementById('legacyFolderList').innerHTML=html;
     } else {
-        document.getElementById('folderGrid').style.display='grid';
-        document.getElementById('legacyFolderList').style.display='none';
+        document.getElementById('finderWindow').style.display='block';
+        document.getElementById('legacyFolderList').innerHTML='';
         var grid=document.getElementById('folderGrid'); var html='';
-        for(var i=0;i<folders.length;i++){
-            var f=folders[i]; 
-            var count=0;
-            for(var j=0;j<notes.length;j++) if(notes[j].folder===f) count++;
-            var sel = selectedFolder===f ? 'style="background:rgba(0,120,255,0.15);"' : '';
-            html+='<div class="folder-item" onclick="openFolder(\''+f+'\')" '+sel+'><div class="folder-icon">📁</div><div class="folder-name">'+f+'</div><div class="folder-name" style="color:#888;font-size:10px;">('+count+')</div></div>';
-        }
+        for(var i=0;i<folders.length;i++){var f=folders[i]; var count=0; for(var j=0;j<notes.length;j++) if(notes[j].folder===f) count++; var sel=selectedFolder===f?'style="background:rgba(0,120,255,0.15);"':''; html+='<div class="folder-item" onclick="openFolder(\''+f+'\')" '+sel+'><div class="folder-icon">📁</div><div class="folder-name">'+f+'</div><div class="folder-name" style="color:#888;font-size:10px;">('+count+')</div></div>';}
         grid.innerHTML=html;
     }
 }
 function openFolder(name){document.getElementById('folderSelect').value=name; displayNotes(); displayFolders();}
-function updateFolderSelect(){
-    var select=document.getElementById('folderSelect'); var cur=select.value; select.innerHTML='<option value="all">all</option>'; for(var i=0;i<folders.length;i++){select.innerHTML+='<option value="'+folders[i]+'">'+folders[i]+'</option>';} if(cur && (cur==='all' || folders.indexOf(cur)!==-1)) select.value=cur;
-}
+function updateFolderSelect(){var select=document.getElementById('folderSelect'); var cur=select.value; select.innerHTML='<option value="all">all</option>'; for(var i=0;i<folders.length;i++){select.innerHTML+='<option value="'+folders[i]+'">'+folders[i]+'</option>';} if(cur && (cur==='all' || folders.indexOf(cur)!==-1)) select.value=cur;}
 function showNewFolderInput(){hideAllInputs(); document.getElementById('newFolderInput').style.display='block'; document.getElementById('createFolderBtn').style.display='block'; document.getElementById('newFolderInput').focus();}
 function showRenameFolderInput(){if(selectedFolder==='all'){alert('please select a folder first'); return;} hideAllInputs(); document.getElementById('renameFolderInput').style.display='block'; document.getElementById('renameFolderBtn').style.display='block'; document.getElementById('renameFolderInput').value=selectedFolder; document.getElementById('renameFolderInput').focus();}
 function hideAllInputs(){['newFolderInput','createFolderBtn','renameFolderInput','renameFolderBtn'].forEach(function(id){document.getElementById(id).style.display='none'; document.getElementById(id).value='';});}
-
-function createFolder(){
-    var name=document.getElementById('newFolderInput').value.trim();
-    if(!name){alert('please enter a folder name'); return;}
-    if(name.toLowerCase()==='all'){alert('"all" is reserved'); return;}
-    if(folders.indexOf(name)!==-1){alert('folder already exists'); return;}
-    folders.push(name); saveFolders(); updateFolderSelect(); displayFolders(); hideAllInputs();
-}
-function renameFolder(){
-    if(selectedFolder==='all'){alert('please select a folder first'); return;}
-    var newName=document.getElementById('renameFolderInput').value.trim();
-    if(!newName){alert('please enter a new name'); return;}
-    if(newName.toLowerCase()==='all'){alert('"all" is reserved'); return;}
-    if(newName===selectedFolder){hideAllInputs(); return;}
-    if(folders.indexOf(newName)!==-1){alert('folder name already exists'); return;}
-    for(var i=0;i<folders.length;i++) if(folders[i]===selectedFolder) folders[i]=newName;
-    for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) notes[i].folder=newName;
-    selectedFolder=newName; saveNotes(); saveFolders(); updateFolderSelect(); document.getElementById('folderSelect').value=newName; displayNotes(); displayFolders(); hideAllInputs();
-}
-function deleteFolder(){
-    if(selectedFolder==='all'){alert('please select a folder to delete'); return;}
-    var count=0; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) count++;
-    var msg='delete folder "'+selectedFolder+'"?'; if(count>0) msg+='\n\n'+count+' note(s) will be moved to "default"';
-    if(!confirm(msg)) return;
-    for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) notes[i].folder='default';
-    var newFolders=[]; for(var i=0;i<folders.length;i++) if(folders[i]!==selectedFolder) newFolders.push(folders[i]);
-    folders=newFolders; if(folders.indexOf('default')===-1) folders.unshift('default');
-    saveNotes(); saveFolders(); updateFolderSelect(); document.getElementById('folderSelect').value='all'; selectedFolder='all'; displayNotes(); displayFolders();
-}
+function createFolder(){var name=document.getElementById('newFolderInput').value.trim(); if(!name){alert('please enter a folder name'); return;} if(name.toLowerCase()==='all'){alert('"all" is reserved'); return;} if(folders.indexOf(name)!==-1){alert('folder name already exists'); return;} folders.push(name); saveFolders(); updateFolderSelect(); displayFolders(); hideAllInputs();}
+function renameFolder(){if(selectedFolder==='all'){alert('please select a folder first'); return;} var newName=document.getElementById('renameFolderInput').value.trim(); if(!newName){alert('please enter a new name'); return;} if(newName.toLowerCase()==='all'){alert('"all" is reserved'); return;} if(newName===selectedFolder){hideAllInputs(); return;} if(folders.indexOf(newName)!==-1){alert('folder name already exists'); return;} for(var i=0;i<folders.length;i++) if(folders[i]===selectedFolder) folders[i]=newName; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) notes[i].folder=newName; selectedFolder=newName; saveNotes(); saveFolders(); updateFolderSelect(); document.getElementById('folderSelect').value=newName; displayNotes(); displayFolders(); hideAllInputs();}
+function deleteFolder(){if(selectedFolder==='all'){alert('please select a folder to delete'); return;} var count=0; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) count++; var msg='delete folder "'+selectedFolder+'"?'; if(count>0) msg+='\n\n'+count+' note(s) will be moved to "default"'; if(!confirm(msg)) return; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) notes[i].folder='default'; var newFolders=[]; for(var i=0;i<folders.length;i++) if(folders[i]!==selectedFolder) newFolders.push(folders[i]); folders=newFolders; if(folders.indexOf('default')===-1) folders.unshift('default'); saveNotes(); saveFolders(); updateFolderSelect(); document.getElementById('folderSelect').value='all'; selectedFolder='all'; displayNotes(); displayFolders();}
 </script>
 </body>
 </html>
