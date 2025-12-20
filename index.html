@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>@yrizzme notes</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    background: #f5f5f5;
+    padding: 10px;
+}
+
+.container {
+    max-width: 480px;
+    margin: 0 auto;
+    background: white;
+    border: 1px solid #ccc;
+}
+
+.header {
+    background: #2c3e50;
+    color: white;
+    padding: 12px;
+    text-align: center;
+}
+
+.login-form, .notes-section {
+    padding: 15px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input[type="text"],
+input[type="password"],
+textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+}
+
+textarea {
+    min-height: 120px;
+    resize: none;
+}
+
+button {
+    background: #3498db;
+    color: white;
+    border: none;
+    padding: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 5px;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+}
+
+.btn-danger {
+    background: #e74c3c;
+}
+
+.note-item {
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #fafafa;
+}
+
+.note-date {
+    font-size: 11px;
+    color: #7f8c8d;
+    margin-bottom: 5px;
+}
+
+.hidden {
+    display: none;
+}
+
+.error {
+    color: #e74c3c;
+    margin-bottom: 10px;
+}
+
+.user-info {
+    background: #ecf0f1;
+    padding: 10px;
+    margin-bottom: 15px;
+    font-size: 12px;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+    <div class="header">
+        <h1>@yrizzme notes</h1>
+    </div>
+
+    <div id="loginSection" class="login-form">
+        <h2>login</h2>
+        <div id="loginError" class="error hidden"></div>
+        <div class="form-group">
+            <label>username</label>
+            <input type="text" id="loginUsername">
+        </div>
+        <div class="form-group">
+            <label>password</label>
+            <input type="password" id="loginPassword">
+        </div>
+        <button onclick="login()">login</button>
+    </div>
+
+    <div id="notesSection" class="notes-section hidden">
+        <div class="user-info">
+            logged in as <strong id="currentUser"></strong>
+            <button class="btn-secondary" onclick="logout()">logout</button>
+        </div>
+
+        <input type="text" id="searchInput" placeholder="search notes..." onkeyup="searchNotes()">
+
+        <div class="form-group">
+            <label>note</label>
+            <textarea id="noteText"></textarea>
+            <button onclick="saveNote()">save</button>
+        </div>
+
+        <button class="btn-secondary" onclick="exportTxt()">export .txt</button>
+        <button class="btn-secondary" onclick="exportMd()">export .md</button>
+
+        <div id="notesList"></div>
+    </div>
+</div>
+
+<script>
+/* ===== CONFIG ===== */
+var USERS = { username: 'yrizzme', password: 'admin' };
+var ENCRYPTION_KEY = 'admin';
+
+var BIN_ID = '69469077ae596e708fa6c942';
+var READ_KEY = 'PASTE_READ_KEY_HERE';
+var WRITE_KEY = 'PASTE_WRITE_KEY_HERE';
+
+/* ===== STATE ===== */
+var currentUser = null;
+var notes = [];
+var editingNoteId = null;
+
+/* ===== UTILS ===== */
+function isOnline() {
+    return navigator.onLine;
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+}
+
+/* ===== MARKDOWN ===== */
+function renderMarkdown(text) {
+    return escapeHtml(text)
+        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+        .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+        .replace(/`(.*?)`/gim, '<code>$1</code>')
+        .replace(/\n/gim, '<br>');
+}
+
+/* ===== ENCRYPTION ===== */
+function xorEncrypt(text, key) {
+    var result = '';
+    for (var i = 0; i < text.length; i++) {
+        result += String.fromCharCode(
+            text.charCodeAt(i) ^ key.charCodeAt(i % key.length)
+        );
+    }
+    return btoa(result);
+}
+
+function xorDecrypt(encoded, key) {
+    var text = atob(encoded);
+    var result = '';
+    for (var i = 0; i < text.length; i++) {
+        result += String.fromCharCode(
+            text.charCodeAt(i) ^ key.charCodeAt(i % key.length)
+        );
+    }
+    return result;
+}
+
+/* ===== LOGIN ===== */
+function login() {
+    var u = document.getElementById('loginUsername').value;
+    var p = document.getElementById('loginPassword').value;
+
+    if (u === USERS.username && p === USERS.password) {
+        currentUser = u;
+        document.getElementById('currentUser').textContent = u;
+        document.getElementById('loginSection').className = 'login-form hidden';
+        document.getElementById('notesSection').className = 'notes-section';
+        loadNotes();
+    } else {
+        var err = document.getElementById('loginError');
+        err.textContent = 'wrong credentials';
+        err.className = 'error';
+    }
+}
+
+function logout() {
+    currentUser = null;
+    notes = [];
+    document.getElementById('loginSection').className = 'login-form';
+    document.getElementById('notesSection').className = 'notes-section hidden';
+}
+
+/* ===== LOCAL STORAGE ===== */
+function saveLocal() {
+    try {
+        localStorage.setItem(
+            'notes_backup',
+            xorEncrypt(JSON.stringify(notes), ENCRYPTION_KEY)
+        );
+    } catch (e) {}
+}
+
+function loadLocal() {
+    try {
+        var saved = localStorage.getItem('notes_backup');
+        notes = saved ? JSON.parse(xorDecrypt(saved, ENCRYPTION_KEY)) : [];
+    } catch (e) {
+        notes = [];
+    }
+}
+
+/* ===== CLOUD SYNC ===== */
+function saveToStorage() {
+    saveLocal();
+    if (!isOnline()) return;
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', 'https://api.jsonbin.io/v3/b/' + BIN_ID, true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('X-Master-Key', WRITE_KEY);
+    xhr.send(JSON.stringify({
+        data: xorEncrypt(JSON.stringify(notes), ENCRYPTION_KEY)
+    }));
+}
+
+function loadNotes() {
+    loadLocal();
+    if (!isOnline()) {
+        displayNotes();
+        return;
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'https://api.jsonbin.io/v3/b/' + BIN_ID + '/latest', true);
+    xhr.setRequestHeader('X-Master-Key', READ_KEY);
+
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+            try {
+                var res = JSON.parse(xhr.responseText);
+                if (res.record && res.record.data) {
+                    notes = JSON.parse(
+                        xorDecrypt(res.record.data, ENCRYPTION_KEY)
+                    );
+                    saveLocal();
+                }
+            } catch (e) {}
+            displayNotes();
+        }
+    };
+
+    xhr.send();
+}
+
+/* ===== NOTES ===== */
+function saveNote() {
+    var text = document.getElementById('noteText').value;
+    if (!text) return;
+
+    if (editingNoteId) {
+        for (var i = 0; i < notes.length; i++) {
+            if (notes[i].id === editingNoteId) {
+                notes[i].text = text;
+                notes[i].date = new Date().toLocaleString();
+            }
+        }
+        editingNoteId = null;
+    } else {
+        notes.unshift({
+            id: Date.now(),
+            text: text,
+            date: new Date().toLocaleString()
+        });
+    }
+
+    document.getElementById('noteText').value = '';
+    saveToStorage();
+    displayNotes();
+}
+
+function editNote(id) {
+    for (var i = 0; i < notes.length; i++) {
+        if (notes[i].id === id) {
+            document.getElementById('noteText').value = notes[i].text;
+            editingNoteId = id;
+        }
+    }
+}
+
+function deleteNote(id) {
+    var out = [];
+    for (var i = 0; i < notes.length; i++) {
+        if (notes[i].id !== id) out.push(notes[i]);
+    }
+    notes = out;
+    saveToStorage();
+    displayNotes();
+}
+
+/* ===== DISPLAY + SEARCH ===== */
+function displayNotes() {
+    var list = document.getElementById('notesList');
+    var html = '';
+
+    for (var i = 0; i < notes.length; i++) {
+        html += '<div class="note-item">';
+        html += '<div class="note-date">' + escapeHtml(notes[i].date) + '</div>';
+        html += '<div>' + renderMarkdown(notes[i].text) + '</div>';
+        html += '<button onclick="editNote(' + notes[i].id + ')">edit</button>';
+        html += '<button class="btn-danger" onclick="deleteNote(' + notes[i].id + ')">delete</button>';
+        html += '</div>';
+    }
+
+    list.innerHTML = html || '<p>no notes</p>';
+}
+
+function searchNotes() {
+    var q = document.getElementById('searchInput').value.toLowerCase();
+    var list = document.getElementById('notesList');
+    var html = '';
+
+    for (var i = 0; i < notes.length; i++) {
+        if (notes[i].text.toLowerCase().indexOf(q) !== -1) {
+            html += '<div class="note-item">';
+            html += '<div class="note-date">' + escapeHtml(notes[i].date) + '</div>';
+            html += '<div>' + renderMarkdown(notes[i].text) + '</div>';
+            html += '<button onclick="editNote(' + notes[i].id + ')">edit</button>';
+            html += '<button class="btn-danger" onclick="deleteNote(' + notes[i].id + ')">delete</button>';
+            html += '</div>';
+        }
+    }
+
+    list.innerHTML = html || '<p>no results</p>';
+}
+
+/* ===== EXPORT ===== */
+function exportTxt() {
+    var content = '';
+    for (var i = 0; i < notes.length; i++) {
+        content += notes[i].date + '\n' + notes[i].text + '\n\n';
+    }
+    downloadFile(content, 'yrizzme-notes.txt', 'text/plain');
+}
+
+function exportMd() {
+    var content = '';
+    for (var i = 0; i < notes.length; i++) {
+        content += '## ' + notes[i].date + '\n\n' + notes[i].text + '\n\n';
+    }
+    downloadFile(content, 'yrizzme-notes.md', 'text/markdown');
+}
+
+function downloadFile(content, filename, type) {
+    var blob = new Blob([content], { type: type });
+    var url = URL.createObjectURL(blob);
+    window.location.href = url;
+}
+</script>
+</body>
+</html>
