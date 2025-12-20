@@ -10,38 +10,15 @@ body.dark { background:#111; color:#eee; }
 .container { max-width:480px; margin:0 auto; border:1px solid #aaa; padding:10px; background:inherit; }
 .header { text-align:center; margin-bottom:10px; }
 .badge { font-size:11px; padding:3px 6px; border:1px solid #666; display:inline-block; margin-top:5px; }
-.note-item { background:#fafafa; border:1px solid #ccc; padding:8px; margin-bottom:10px; border-radius:4px; }
-body.dark .note-item { background:#222; border-color:#444; }
-textarea, select, button { width:100%; margin-top:6px; padding:6px; font-size:14px; box-sizing:border-box; }
+textarea, button { width:100%; margin-top:6px; padding:6px; font-size:14px; box-sizing:border-box; }
 button { cursor:pointer; }
 
-/* modern finder */
-.finder-window { margin-top:20px; border:2px solid #999; border-radius:8px; overflow:hidden; background:#f5f5f5; }
-body.dark .finder-window { background:#1a1a1a; border-color:#555; }
-.finder-titlebar { background:linear-gradient(180deg, #e8e8e8 0%, #d0d0d0 100%); padding:8px 10px; border-bottom:1px solid #999; font-size:12px; font-weight:bold; display:flex; align-items:center; justify-content:space-between; }
-body.dark .finder-titlebar { background:linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%); border-bottom-color:#555; }
-.finder-dots { display:flex; gap:6px; }
-.finder-dot { width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,0.2); }
-.dot-close { background:#ff5f57; }
-.dot-min { background:#ffbd2e; }
-.dot-max { background:#28ca42; }
-.finder-content { padding:10px; min-height:120px; }
-.folder-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(80px, 1fr)); gap:12px; margin-bottom:10px; }
-.folder-item { text-align:center; cursor:pointer; padding:8px; border-radius:4px; transition:background 0.2s; }
-.folder-item:hover { background:rgba(0,0,0,0.05); }
-body.dark .folder-item:hover { background:rgba(255,255,255,0.05); }
-.folder-icon { font-size:40px; margin-bottom:4px; }
-.folder-name { font-size:11px; word-wrap:break-word; }
-.folder-actions { display:flex; gap:6px; margin-top:10px; }
-.folder-actions button { margin-top:0; }
-.finder-input { width:calc(100% - 12px); padding:6px; margin-top:6px; font-size:13px; }
+/* chat mode folder list */
+.chat-folder-list div { cursor:pointer; margin-bottom:4px; padding:4px; border:1px solid #ccc; border-radius:2px; background:#fff; }
+body.dark .chat-folder-list div { background:#222; border-color:#444; }
 
-/* legacy folder list */
-.legacy-folder-list div { cursor:pointer; margin-bottom:4px; padding:4px; border:1px solid #ccc; border-radius:2px; background:#fff; }
-body.dark .legacy-folder-list div { background:#222; border-color:#444; }
-
-/* legacy mode small inline buttons */
-.legacy-btn {
+/* chat mode small inline buttons */
+.chat-btn {
     display:inline-block;
     padding:2px 4px;
     font-size:10px;
@@ -50,151 +27,133 @@ body.dark .legacy-folder-list div { background:#222; border-color:#444; }
     width:auto;
     border-radius:0;
 }
+
+/* chat display */
+#notesList { white-space: pre-wrap; font-size:12px; margin-top:10px; background:#fafafa; padding:6px; border:1px solid #ccc; border-radius:4px; min-height:100px; overflow-y:auto; max-height:300px; }
+body.dark #notesList { background:#222; border-color:#444; color:#eee; }
 </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
         <h2>@yrizzme notes</h2>
-        <div id="statusBadge" class="badge"></div>
+        <div id="statusBadge" class="badge">chat mode</div>
         <button onclick="toggleDark()">toggle dark</button>
-        <button onclick="toggleMode()">toggle modern</button>
     </div>
 
-    <select id="folderSelect" onchange="displayNotes()">
-        <option value="all">all</option>
-    </select>
+    <textarea id="noteText" placeholder="type message..." onkeyup="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault(); saveMessage();}"></textarea>
+    <button onclick="saveMessage()" id="sendBtn">send</button>
 
-    <textarea id="noteText" placeholder="write something..." oninput="autoSave()" onkeyup="autoSave()"></textarea>
-    <button onclick="saveNote()">save</button>
-    <button onclick="exportTxt()">export .txt</button>
-
+    <!-- chat display -->
     <div id="notesList"></div>
 
-    <!-- legacy folder buttons -->
+    <!-- chat mode folder buttons -->
     <div style="margin-top:10px;">
-        <button class="legacy-btn" onclick="showNewFolderInput()">new folder</button>
-        <button class="legacy-btn" onclick="showRenameFolderInput()">rename folder</button>
-        <button class="legacy-btn" onclick="deleteFolder()">delete folder</button>
+        <button class="chat-btn" onclick="showNewFolderInput()">new folder</button>
+        <button class="chat-btn" onclick="showRenameFolderInput()">rename folder</button>
+        <button class="chat-btn" onclick="deleteFolder()">delete folder</button>
         <input type="text" id="newFolderInput" placeholder="folder name..." style="display:none; width:100%; margin-top:6px;">
         <button id="createFolderBtn" onclick="createFolder()" style="display:none;">create</button>
         <input type="text" id="renameFolderInput" placeholder="new name..." style="display:none; width:100%; margin-top:6px;">
         <button id="renameFolderBtn" onclick="renameFolder()" style="display:none;">rename</button>
     </div>
 
-    <div class="legacy-folder-list" id="legacyFolderList"></div>
-
-    <!-- modern finder window -->
-    <div class="finder-window" id="finderWindow">
-        <div class="finder-titlebar">
-            <div class="finder-dots">
-                <div class="finder-dot dot-close"></div>
-                <div class="finder-dot dot-min"></div>
-                <div class="finder-dot dot-max"></div>
-            </div>
-            <div>Folders</div>
-            <div style="width:60px;"></div>
-        </div>
-        <div class="finder-content">
-            <div class="folder-grid" id="folderGrid"></div>
-            <div class="folder-actions">
-                <button onclick="showNewFolderInput()">new folder</button>
-                <button onclick="showRenameFolderInput()">rename folder</button>
-                <button onclick="deleteFolder()">delete folder</button>
-            </div>
-            <input type="text" id="newFolderInput" class="finder-input" placeholder="folder name..." style="display:none;">
-            <button id="createFolderBtn" onclick="createFolder()" style="display:none;">create</button>
-            <input type="text" id="renameFolderInput" class="finder-input" placeholder="new name..." style="display:none;">
-            <button id="renameFolderBtn" onclick="renameFolder()" style="display:none;">rename</button>
-        </div>
-    </div>
+    <div class="chat-folder-list" id="chatFolderList"></div>
 </div>
 
 <script>
-// ===== DEFAULT LEGACY MODE =====
-var LEGACY_MODE = true;
-
-// ===== STORAGE =====
-var STORAGE_KEY = 'yrizzme_notes';
-var FOLDERS_KEY = 'yrizzme_folders';
-var notes = [];
+// ===== CHAT MODE ONLY =====
 var folders = ['default','school','random'];
-var selectedFolder = 'all';
-var editingId = null;
-var saveTimer = null;
+var selectedFolder = 'default';
 
 // ===== INIT =====
 function init(){
-    document.getElementById('statusBadge').innerHTML = LEGACY_MODE ? 'legacy mode' : 'modern mode';
     if(localStorage.getItem('dark')==='1') document.body.className='dark';
-    loadNotes(); loadFolders(); updateFolderSelect();
-    displayNotes(); displayFolders();
+    loadFolders();
+    displayFolders();
+    displayChat();
 }
 init();
-
-// ===== TOGGLE MODES =====
-function toggleMode(){
-    LEGACY_MODE = !LEGACY_MODE;
-    document.getElementById('statusBadge').innerHTML = LEGACY_MODE ? 'legacy mode' : 'modern mode';
-    displayFolders();
-}
 
 // ===== DARK MODE =====
 function toggleDark(){if(document.body.className.indexOf('dark')!==-1){document.body.className=''; localStorage.setItem('dark','0');} else{document.body.className='dark'; localStorage.setItem('dark','1');}}
 
-// ===== AUTOSAVE =====
-function autoSave(){clearTimeout(saveTimer); saveTimer=setTimeout(saveNotes,0);}
-
-// ===== NOTES =====
-function saveNote(){
-    var text=document.getElementById('noteText').value.trim();
+// ===== CHAT FUNCTIONS =====
+function saveMessage(){
+    if(!selectedFolder) selectedFolder='default';
+    var text = document.getElementById('noteText').value.trim();
     if(!text) return;
-    var folder=document.getElementById('folderSelect').value; if(folder==='all') folder='default';
-    if(editingId){for(var i=0;i<notes.length;i++){if(notes[i].id===editingId){notes[i].text=text;notes[i].folder=folder;notes[i].date=new Date().toLocaleString();}} editingId=null;}
-    else {notes.unshift({id:Date.now(), text:text, folder:folder, date:new Date().toLocaleString()});}
-    document.getElementById('noteText').value=''; saveNotes(); displayNotes();
+    var key = 'yrizzme_chat_' + selectedFolder;
+    var chat = localStorage.getItem(key) || '';
+    var timestamp = new Date().toLocaleString();
+    chat += '['+timestamp+'] '+text+'\n';
+    localStorage.setItem(key, chat);
+    document.getElementById('noteText').value = '';
+    displayChat();
 }
-function editNote(id){for(var i=0;i<notes.length;i++){if(notes[i].id===id){document.getElementById('noteText').value=notes[i].text; document.getElementById('folderSelect').value=notes[i].folder; editingId=id;}}}
-function deleteNote(id){if(!confirm('delete this note?'))return; var newNotes=[]; for(var i=0;i<notes.length;i++){if(notes[i].id!==id)newNotes.push(notes[i]);} notes=newNotes; saveNotes(); displayNotes();}
-
-// ===== DISPLAY =====
-function displayNotes(){
-    var list=document.getElementById('notesList'); var folder=document.getElementById('folderSelect').value; selectedFolder=folder; var html='';
-    for(var i=0;i<notes.length;i++){var n=notes[i]; if(folder!=='all' && n.folder!==folder) continue; html+='<div class="note-item"><div style="font-size:11px">'+n.date+' • '+n.folder+'</div><div>'+n.text.replace(/\n/g,'<br>')+'</div><button onclick="editNote('+n.id+')">edit</button><button onclick="deleteNote('+n.id+')">delete</button></div>';}
-    list.innerHTML = html||'<p>no notes</p>';
+function displayChat(){
+    if(!selectedFolder) selectedFolder='default';
+    var key = 'yrizzme_chat_' + selectedFolder;
+    document.getElementById('notesList').innerText = localStorage.getItem(key) || '';
 }
-
-// ===== STORAGE HELPERS =====
-function saveNotes(){localStorage.setItem(STORAGE_KEY,JSON.stringify(notes));}
-function loadNotes(){try{notes=JSON.parse(localStorage.getItem(STORAGE_KEY))||[];}catch(e){notes=[];}}
-function saveFolders(){localStorage.setItem(FOLDERS_KEY,JSON.stringify(folders));}
-function loadFolders(){try{var l=JSON.parse(localStorage.getItem(FOLDERS_KEY)); if(l && l.length>0) folders=l;}catch(e){}}
-
-// ===== EXPORT =====
-function exportTxt(){var out=''; for(var i=0;i<notes.length;i++){out+=notes[i].date+'\n'+notes[i].text+'\n\n';} var ta=document.getElementById('noteText'); ta.value=out; ta.select(); alert('notes placed in editor — select all and copy');}
 
 // ===== FOLDER MANAGEMENT =====
+function loadFolders(){try{var l=JSON.parse(localStorage.getItem('yrizzme_folders')); if(l && l.length>0) folders=l;}catch(e){}}
+function saveFolders(){localStorage.setItem('yrizzme_folders',JSON.stringify(folders));}
+
 function displayFolders(){
-    if(LEGACY_MODE){
-        document.getElementById('finderWindow').style.display='none';
-        var html=''; for(var i=0;i<folders.length;i++){var f=folders[i]; var count=0; for(var j=0;j<notes.length;j++) if(notes[j].folder===f) count++; var sel=selectedFolder===f?'*':''; html+='<div onclick="openFolder(\''+f+'\')">'+sel+' '+f+' ('+count+')</div>';}
-        document.getElementById('legacyFolderList').innerHTML=html;
-    } else {
-        document.getElementById('finderWindow').style.display='block';
-        document.getElementById('legacyFolderList').innerHTML='';
-        var grid=document.getElementById('folderGrid'); var html='';
-        for(var i=0;i<folders.length;i++){var f=folders[i]; var count=0; for(var j=0;j<notes.length;j++) if(notes[j].folder===f) count++; var sel=selectedFolder===f?'style="background:rgba(0,120,255,0.15);"':''; html+='<div class="folder-item" onclick="openFolder(\''+f+'\')" '+sel+'><div class="folder-icon">📁</div><div class="folder-name">'+f+'</div><div class="folder-name" style="color:#888;font-size:10px;">('+count+')</div></div>';}
-        grid.innerHTML=html;
+    var html=''; 
+    for(var i=0;i<folders.length;i++){
+        var f=folders[i]; 
+        var selStyle = (f===selectedFolder)?'background:rgba(0,120,255,0.2);':'';
+        html+='<div onclick="selectFolder(\''+f+'\')" style="'+selStyle+'">'+f+'</div>';
     }
+    document.getElementById('chatFolderList').innerHTML=html;
 }
-function openFolder(name){document.getElementById('folderSelect').value=name; displayNotes(); displayFolders();}
-function updateFolderSelect(){var select=document.getElementById('folderSelect'); var cur=select.value; select.innerHTML='<option value="all">all</option>'; for(var i=0;i<folders.length;i++){select.innerHTML+='<option value="'+folders[i]+'">'+folders[i]+'</option>';} if(cur && (cur==='all' || folders.indexOf(cur)!==-1)) select.value=cur;}
+
+function selectFolder(name){selectedFolder=name; displayFolders(); displayChat();}
+
 function showNewFolderInput(){hideAllInputs(); document.getElementById('newFolderInput').style.display='block'; document.getElementById('createFolderBtn').style.display='block'; document.getElementById('newFolderInput').focus();}
-function showRenameFolderInput(){if(selectedFolder==='all'){alert('please select a folder first'); return;} hideAllInputs(); document.getElementById('renameFolderInput').style.display='block'; document.getElementById('renameFolderBtn').style.display='block'; document.getElementById('renameFolderInput').value=selectedFolder; document.getElementById('renameFolderInput').focus();}
+function showRenameFolderInput(){hideAllInputs(); document.getElementById('renameFolderInput').style.display='block'; document.getElementById('renameFolderBtn').style.display='block'; document.getElementById('renameFolderInput').value=selectedFolder; document.getElementById('renameFolderInput').focus();}
 function hideAllInputs(){['newFolderInput','createFolderBtn','renameFolderInput','renameFolderBtn'].forEach(function(id){document.getElementById(id).style.display='none'; document.getElementById(id).value='';});}
-function createFolder(){var name=document.getElementById('newFolderInput').value.trim(); if(!name){alert('please enter a folder name'); return;} if(name.toLowerCase()==='all'){alert('"all" is reserved'); return;} if(folders.indexOf(name)!==-1){alert('folder name already exists'); return;} folders.push(name); saveFolders(); updateFolderSelect(); displayFolders(); hideAllInputs();}
-function renameFolder(){if(selectedFolder==='all'){alert('please select a folder first'); return;} var newName=document.getElementById('renameFolderInput').value.trim(); if(!newName){alert('please enter a new name'); return;} if(newName.toLowerCase()==='all'){alert('"all" is reserved'); return;} if(newName===selectedFolder){hideAllInputs(); return;} if(folders.indexOf(newName)!==-1){alert('folder name already exists'); return;} for(var i=0;i<folders.length;i++) if(folders[i]===selectedFolder) folders[i]=newName; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) notes[i].folder=newName; selectedFolder=newName; saveNotes(); saveFolders(); updateFolderSelect(); document.getElementById('folderSelect').value=newName; displayNotes(); displayFolders(); hideAllInputs();}
-function deleteFolder(){if(selectedFolder==='all'){alert('please select a folder to delete'); return;} var count=0; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) count++; var msg='delete folder "'+selectedFolder+'"?'; if(count>0) msg+='\n\n'+count+' note(s) will be moved to "default"'; if(!confirm(msg)) return; for(var i=0;i<notes.length;i++) if(notes[i].folder===selectedFolder) notes[i].folder='default'; var newFolders=[]; for(var i=0;i<folders.length;i++) if(folders[i]!==selectedFolder) newFolders.push(folders[i]); folders=newFolders; if(folders.indexOf('default')===-1) folders.unshift('default'); saveNotes(); saveFolders(); updateFolderSelect(); document.getElementById('folderSelect').value='all'; selectedFolder='all'; displayNotes(); displayFolders();}
+
+function createFolder(){
+    var name=document.getElementById('newFolderInput').value.trim();
+    if(!name){alert('please enter a folder name'); return;}
+    if(name.toLowerCase()==='all'){alert('"all" is reserved'); return;}
+    if(folders.indexOf(name)!==-1){alert('folder already exists'); return;}
+    folders.push(name); saveFolders(); displayFolders(); hideAllInputs();
+}
+
+function renameFolder(){
+    var newName=document.getElementById('renameFolderInput').value.trim();
+    if(!newName){alert('please enter a new name'); return;}
+    if(newName.toLowerCase()==='all'){alert('"all" is reserved'); return;}
+    if(newName===selectedFolder){hideAllInputs(); return;}
+    if(folders.indexOf(newName)!==-1){alert('folder name already exists'); return;}
+    // move messages to new key
+    var oldKey = 'yrizzme_chat_' + selectedFolder;
+    var newKey = 'yrizzme_chat_' + newName;
+    var data = localStorage.getItem(oldKey);
+    if(data) localStorage.setItem(newKey, data);
+    localStorage.removeItem(oldKey);
+    for(var i=0;i<folders.length;i++) if(folders[i]===selectedFolder) folders[i]=newName;
+    selectedFolder=newName; saveFolders(); displayFolders(); displayChat(); hideAllInputs();
+}
+
+function deleteFolder(){
+    if(!selectedFolder){alert('please select a folder to delete'); return;}
+    if(!confirm('delete folder "'+selectedFolder+'"?')) return;
+    // remove chat data
+    var key = 'yrizzme_chat_' + selectedFolder;
+    localStorage.removeItem(key);
+    folders = folders.filter(f=>f!==selectedFolder);
+    if(folders.indexOf('default')===-1) folders.unshift('default');
+    selectedFolder='default';
+    saveFolders();
+    displayFolders();
+    displayChat();
+}
 </script>
 </body>
 </html>
