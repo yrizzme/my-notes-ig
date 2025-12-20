@@ -13,147 +13,147 @@ body.dark { background:#111; color:#eee; }
 textarea, button { width:100%; margin-top:6px; padding:6px; font-size:14px; box-sizing:border-box; }
 button { cursor:pointer; }
 
-/* chat mode folder list */
-.chat-folder-list div { cursor:pointer; margin-bottom:4px; padding:4px; border:1px solid #ccc; border-radius:2px; background:#fff; }
-body.dark .chat-folder-list div { background:#222; border-color:#444; }
+/* folder list & display */
+.folder-list div { cursor:pointer; margin-bottom:4px; padding:4px; border:1px solid #ccc; border-radius:2px; background:#fafafa; }
+body.dark .folder-list div { background:#222; border-color:#444; color:#eee; }
 
-/* chat mode small inline buttons */
-.chat-btn {
-    display:inline-block;
-    padding:2px 4px;
-    font-size:10px;
-    margin-right:2px;
-    margin-bottom:2px;
-    width:auto;
-    border-radius:0;
-}
+.btn { display:inline-block; padding:2px 4px; font-size:10px; margin-right:2px; margin-bottom:2px; width:auto; border-radius:0; }
 
-/* chat display */
 #notesList { white-space: pre-wrap; font-size:12px; margin-top:10px; background:#fafafa; padding:6px; border:1px solid #ccc; border-radius:4px; min-height:100px; overflow-y:auto; max-height:300px; }
 body.dark #notesList { background:#222; border-color:#444; color:#eee; }
+
+textarea { background:#fff; border:1px solid #ccc; border-radius:4px; }
+body.dark textarea { background:#222; border-color:#444; color:#eee; }
 </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
         <h2>@yrizzme notes</h2>
-        <div id="statusBadge" class="badge">chat mode</div>
+        <div id="statusBadge" class="badge">bbm mode</div>
         <button onclick="toggleDark()">toggle dark</button>
+        <button onclick="switchMode()">switch mode</button>
     </div>
 
-    <textarea id="noteText" placeholder="type message..." onkeyup="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault(); saveMessage();}"></textarea>
-    <button onclick="saveMessage()" id="sendBtn">send</button>
+    <textarea id="noteText" rows="3" placeholder="type here..." onkeyup="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault(); saveCurrent();}"></textarea>
+    <button onclick="saveCurrent()" id="sendBtn">save</button>
 
-    <!-- chat display -->
     <div id="notesList"></div>
 
-    <!-- chat mode folder buttons -->
     <div style="margin-top:10px;">
-        <button class="chat-btn" onclick="showNewFolderInput()">new folder</button>
-        <button class="chat-btn" onclick="showRenameFolderInput()">rename folder</button>
-        <button class="chat-btn" onclick="deleteFolder()">delete folder</button>
-        <input type="text" id="newFolderInput" placeholder="folder name..." style="display:none; width:100%; margin-top:6px;">
+        <button class="btn" onclick="showNewFolderInput()">new folder</button>
+        <button class="btn" onclick="showRenameFolderInput()">rename folder</button>
+        <button class="btn" onclick="deleteFolder()">delete folder</button>
+        <input type="text" id="newFolderInput" style="display:none; width:100%; margin-top:6px;">
         <button id="createFolderBtn" onclick="createFolder()" style="display:none;">create</button>
-        <input type="text" id="renameFolderInput" placeholder="new name..." style="display:none; width:100%; margin-top:6px;">
+        <input type="text" id="renameFolderInput" style="display:none; width:100%; margin-top:6px;">
         <button id="renameFolderBtn" onclick="renameFolder()" style="display:none;">rename</button>
     </div>
 
-    <div class="chat-folder-list" id="chatFolderList"></div>
+    <div class="folder-list" id="folderList"></div>
 </div>
 
 <script>
-// ===== CHAT MODE ONLY =====
-var folders = ['default','school','random'];
-var selectedFolder = 'default';
+// ===== COOKIE HELPERS =====
+function setCookie(name, value, days){ var expires=""; if(days){ var d=new Date(); d.setTime(d.getTime() + (days*24*60*60*1000)); expires="; expires="+d.toGMTString(); } document.cookie=name+"="+escape(value)+expires+"; path=/"; }
+function getCookie(name){ var nameEQ=name+"="; var ca=document.cookie.split(';'); for(var i=0;i<ca.length;i++){ var c=ca[i]; while(c.charAt(0)==' ') c=c.substring(1,c.length); if(c.indexOf(nameEQ)==0) return unescape(c.substring(nameEQ.length,c.length)); } return null; }
+function deleteCookie(name){ setCookie(name,"",-1); }
+
+// ===== GLOBALS =====
+var folders=['default','school','random'];
+var selectedFolder='default';
+var mode='bbm'; // default to bbm mode
 
 // ===== INIT =====
 function init(){
-    if(localStorage.getItem('dark')==='1') document.body.className='dark';
+    document.getElementById('statusBadge').innerText = mode==='chat' ? 'chat mode' : 'bbm mode';
+    if(localStorage.getItem('dark')==='1' || getCookie('dark')==='1') document.body.className='dark';
     loadFolders();
     displayFolders();
-    displayChat();
+    displayCurrent();
 }
 init();
 
 // ===== DARK MODE =====
-function toggleDark(){if(document.body.className.indexOf('dark')!==-1){document.body.className=''; localStorage.setItem('dark','0');} else{document.body.className='dark'; localStorage.setItem('dark','1');}}
+function toggleDark(){
+    if(document.body.className.indexOf('dark')!==-1){ document.body.className=''; localStorage.setItem('dark','0'); setCookie('dark','0',365);}
+    else{ document.body.className='dark'; localStorage.setItem('dark','1'); setCookie('dark','1',365);}
+}
 
-// ===== CHAT FUNCTIONS =====
+// ===== MODE SWITCH =====
+function switchMode(){
+    mode = (mode==='chat') ? 'bbm' : 'chat';
+    document.getElementById('statusBadge').innerText = mode==='chat' ? 'chat mode' : 'bbm mode';
+    displayCurrent();
+}
+
+// ===== SAVE & DISPLAY =====
+function saveCurrent(){ if(mode==='chat') saveMessage(); else saveNote(); }
+function displayCurrent(){ if(mode==='chat') displayChat(); else displayNotes(); }
+
+// --- CHAT MODE ---
 function saveMessage(){
     if(!selectedFolder) selectedFolder='default';
-    var text = document.getElementById('noteText').value.trim();
+    var text=document.getElementById('noteText').value.trim();
     if(!text) return;
-    var key = 'yrizzme_chat_' + selectedFolder;
-    var chat = localStorage.getItem(key) || '';
-    var timestamp = new Date().toLocaleString();
-    chat += '['+timestamp+'] '+text+'\n';
-    localStorage.setItem(key, chat);
-    document.getElementById('noteText').value = '';
+    var key='yrizzme_chat_'+selectedFolder;
+    var chat=localStorage.getItem(key)||'';
+    chat+='['+new Date().toLocaleString()+'] '+text+'\n';
+    localStorage.setItem(key,chat);
+    document.getElementById('noteText').value='';
     displayChat();
 }
 function displayChat(){
     if(!selectedFolder) selectedFolder='default';
-    var key = 'yrizzme_chat_' + selectedFolder;
-    document.getElementById('notesList').innerText = localStorage.getItem(key) || '';
+    var key='yrizzme_chat_'+selectedFolder;
+    document.getElementById('notesList').innerText = localStorage.getItem(key)||'';
+}
+
+// --- BBM MODE ---
+function saveNote(){
+    if(!selectedFolder) selectedFolder='default';
+    var text=document.getElementById('noteText').value.trim();
+    if(!text) return;
+    var key='yrizzme_notes_'+selectedFolder;
+    var notes=getCookie(key)||'';
+    notes+='['+new Date().toLocaleString()+'] '+text+'\n';
+    setCookie(key,notes,365);
+    document.getElementById('noteText').value='';
+    displayNotes();
+}
+function displayNotes(){
+    if(!selectedFolder) selectedFolder='default';
+    var key='yrizzme_notes_'+selectedFolder;
+    document.getElementById('notesList').innerHTML=(getCookie(key)||'').replace(/\n/g,'<br>');
 }
 
 // ===== FOLDER MANAGEMENT =====
-function loadFolders(){try{var l=JSON.parse(localStorage.getItem('yrizzme_folders')); if(l && l.length>0) folders=l;}catch(e){}}
-function saveFolders(){localStorage.setItem('yrizzme_folders',JSON.stringify(folders));}
-
+function loadFolders(){
+    try{
+        var l=(mode==='chat')? JSON.parse(localStorage.getItem('yrizzme_folders')) : (getCookie('yrizzme_folders')?getCookie('yrizzme_folders').split(','):null);
+        if(l && l.length>0) folders=l;
+    }catch(e){}
+}
+function saveFolders(){
+    if(mode==='chat') localStorage.setItem('yrizzme_folders',JSON.stringify(folders));
+    else setCookie('yrizzme_folders',folders.join(','),365);
+}
 function displayFolders(){
     var html=''; 
     for(var i=0;i<folders.length;i++){
         var f=folders[i]; 
-        var selStyle = (f===selectedFolder)?'background:rgba(0,120,255,0.2);':'';
+        var selStyle=(f===selectedFolder)?'background:rgba(0,120,255,0.2);':'';
         html+='<div onclick="selectFolder(\''+f+'\')" style="'+selStyle+'">'+f+'</div>';
     }
-    document.getElementById('chatFolderList').innerHTML=html;
+    document.getElementById('folderList').innerHTML=html;
 }
-
-function selectFolder(name){selectedFolder=name; displayFolders(); displayChat();}
-
+function selectFolder(name){selectedFolder=name; displayFolders(); displayCurrent();}
 function showNewFolderInput(){hideAllInputs(); document.getElementById('newFolderInput').style.display='block'; document.getElementById('createFolderBtn').style.display='block'; document.getElementById('newFolderInput').focus();}
 function showRenameFolderInput(){hideAllInputs(); document.getElementById('renameFolderInput').style.display='block'; document.getElementById('renameFolderBtn').style.display='block'; document.getElementById('renameFolderInput').value=selectedFolder; document.getElementById('renameFolderInput').focus();}
 function hideAllInputs(){['newFolderInput','createFolderBtn','renameFolderInput','renameFolderBtn'].forEach(function(id){document.getElementById(id).style.display='none'; document.getElementById(id).value='';});}
-
-function createFolder(){
-    var name=document.getElementById('newFolderInput').value.trim();
-    if(!name){alert('please enter a folder name'); return;}
-    if(name.toLowerCase()==='all'){alert('"all" is reserved'); return;}
-    if(folders.indexOf(name)!==-1){alert('folder already exists'); return;}
-    folders.push(name); saveFolders(); displayFolders(); hideAllInputs();
-}
-
-function renameFolder(){
-    var newName=document.getElementById('renameFolderInput').value.trim();
-    if(!newName){alert('please enter a new name'); return;}
-    if(newName.toLowerCase()==='all'){alert('"all" is reserved'); return;}
-    if(newName===selectedFolder){hideAllInputs(); return;}
-    if(folders.indexOf(newName)!==-1){alert('folder name already exists'); return;}
-    // move messages to new key
-    var oldKey = 'yrizzme_chat_' + selectedFolder;
-    var newKey = 'yrizzme_chat_' + newName;
-    var data = localStorage.getItem(oldKey);
-    if(data) localStorage.setItem(newKey, data);
-    localStorage.removeItem(oldKey);
-    for(var i=0;i<folders.length;i++) if(folders[i]===selectedFolder) folders[i]=newName;
-    selectedFolder=newName; saveFolders(); displayFolders(); displayChat(); hideAllInputs();
-}
-
-function deleteFolder(){
-    if(!selectedFolder){alert('please select a folder to delete'); return;}
-    if(!confirm('delete folder "'+selectedFolder+'"?')) return;
-    // remove chat data
-    var key = 'yrizzme_chat_' + selectedFolder;
-    localStorage.removeItem(key);
-    folders = folders.filter(f=>f!==selectedFolder);
-    if(folders.indexOf('default')===-1) folders.unshift('default');
-    selectedFolder='default';
-    saveFolders();
-    displayFolders();
-    displayChat();
-}
+function createFolder(){var name=document.getElementById('newFolderInput').value.trim(); if(!name){alert('enter folder name'); return;} if(name.toLowerCase()==='all'){alert('"all" reserved'); return;} if(folders.indexOf(name)!==-1){alert('folder exists'); return;} folders.push(name); saveFolders(); displayFolders(); hideAllInputs();}
+function renameFolder(){var newName=document.getElementById('renameFolderInput').value.trim(); if(!newName){alert('enter new name'); return;} if(newName.toLowerCase()==='all'){alert('"all" reserved'); return;} if(newName===selectedFolder){hideAllInputs(); return;} if(folders.indexOf(newName)!==-1){alert('folder exists'); return;} var oldKey=(mode==='chat')?'yrizzme_chat_'+selectedFolder:'yrizzme_notes_'+selectedFolder; var newKey=(mode==='chat')?'yrizzme_chat_'+newName:'yrizzme_notes_'+newName; var data=(mode==='chat')?localStorage.getItem(oldKey):getCookie(oldKey); if(data){if(mode==='chat') localStorage.setItem(newKey,data); else setCookie(newKey,data,365);} if(mode==='chat') localStorage.removeItem(oldKey); else deleteCookie(oldKey); for(var i=0;i<folders.length;i++) if(folders[i]===selectedFolder) folders[i]=newName; selectedFolder=newName; saveFolders(); displayFolders(); displayCurrent(); hideAllInputs();}
+function deleteFolder(){if(!selectedFolder){alert('select folder'); return;} if(!confirm('delete folder "'+selectedFolder+'"?')) return; var key=(mode==='chat')?'yrizzme_chat_'+selectedFolder:'yrizzme_notes_'+selectedFolder; if(mode==='chat') localStorage.removeItem(key); else deleteCookie(key); folders=folders.filter(f=>f!==selectedFolder); if(folders.indexOf('default')===-1) folders.unshift('default'); selectedFolder='default'; saveFolders(); displayFolders(); displayCurrent();}
 </script>
 </body>
 </html>
